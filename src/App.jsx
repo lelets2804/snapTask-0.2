@@ -7,6 +7,8 @@ import QRcode from "./pages/QRcode";
 import Libras from "./pages/Libras";
 import LeitorCodigos from "./pages/LeitorCodigos";
 import Galeria from "./pages/Galeria";
+import Flashcards from "./pages/Flashcards";
+import EditorDoc from "./pages/EditorDoc";
 
 function App() {
   return (
@@ -19,6 +21,8 @@ function App() {
         <Route path="/libras" element={<Libras />} />
         <Route path="/leitor-codigos" element={<LeitorCodigos />} />
         <Route path="/galeria" element={<Galeria />} />
+        <Route path="/flashcards" element={<Flashcards />}/>
+        <Route path="/editor-doc" element={<EditorDoc />}/>
       </Routes>
     </BrowserRouter>
   );
