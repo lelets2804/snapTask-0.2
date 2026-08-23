@@ -9,8 +9,6 @@ import galeriaIcon from "../assets/galeria.png";
 import brainIcon from "../assets/brain.png";
 import maoIcon from "../assets/mao.png";
 import retornoIcon from "../assets/retorno.png";
-import maximizeIcon from "../assets/maximize.png";
-import editIcon from "../assets/edit.png";
 
 const documents = [
   {
