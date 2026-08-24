@@ -27,6 +27,18 @@ function Flashcards() {
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState("");
   const [promptOpen, setPromptOpen] = useState(false);
+  const [documentSource, setDocumentSource] = useState(() => {
+    try {
+      localStorage.removeItem("snapTask.flashcardsSource");
+      const source = JSON.parse(sessionStorage.getItem("snapTask.flashcardsSource") || "null");
+      sessionStorage.removeItem("snapTask.flashcardsSource");
+      return source;
+    } catch {
+      return null;
+    }
+  });
+  const [documentPromptOpen, setDocumentPromptOpen] = useState(false);
+  const [textPromptOpen, setTextPromptOpen] = useState(false);
   const imageInputRef = useRef(null);
   const pendingImageRef = useRef(null);
 
@@ -98,6 +110,69 @@ function Flashcards() {
     }
   }
 
+  async function generateFromDocument({ prompt }) {
+    if (!documentSource?.text) return;
+
+    setDocumentPromptOpen(false);
+    setGenerating(true);
+    setStatus("Gerando flashcards a partir do documento...");
+
+    const formData = new FormData();
+    formData.append("texto", documentSource.text);
+    formData.append("prompt", prompt);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
+        throw new Error(data.erro || "Nenhum flashcard retornado.");
+      }
+
+      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCurrent(0);
+      setFlipped(false);
+      setStatus("Flashcards gerados a partir do documento!");
+      sessionStorage.removeItem("snapTask.flashcardsSource");
+      setDocumentSource(null);
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function generateFromText({ prompt }) {
+    if (!prompt) {
+      setStatus("Digite ou fale um tema para gerar os flashcards.");
+      return;
+    }
+
+    setTextPromptOpen(false);
+    setGenerating(true);
+    setStatus("Gerando flashcards a partir do texto...");
+
+    const formData = new FormData();
+    formData.append("texto", prompt);
+    formData.append("prompt", "Gere flashcards didáticos sobre o texto fornecido.");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
+        throw new Error(data.erro || "Nenhum flashcard retornado.");
+      }
+
+      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCurrent(0);
+      setFlipped(false);
+      setStatus("Flashcards gerados a partir do texto!");
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center font-[system-ui]">
 
@@ -143,6 +218,8 @@ function Flashcards() {
 
       <div className="flex flex-col items-center p-5">
         <PromptComplemento open={promptOpen} title="Complementar flashcards" onConfirm={generateFlashcards} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
+        <PromptComplemento open={documentPromptOpen} title="Complementar flashcards do documento" onConfirm={generateFromDocument} onCancel={() => setDocumentPromptOpen(false)} />
+        <PromptComplemento open={textPromptOpen} title="Gerar flashcards sem foto" onConfirm={generateFromText} onCancel={() => setTextPromptOpen(false)} />
 
         <div className="text-center mb-5">
 
@@ -238,6 +315,10 @@ function Flashcards() {
             <button type="button" onClick={() => imageInputRef.current?.click()} disabled={generating} className="w-full border-0 rounded-2xl p-4 mb-3 bg-[#232632] text-white text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-wait">
               {generating ? "Gerando..." : "Gerar com IA (foto)"}
             </button>
+
+            <button type="button" onClick={() => setTextPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-transparent text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar por texto ou voz</button>
+
+            {documentSource?.requested && documentSource.text && <button type="button" onClick={() => setDocumentPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-[#ffc40012] text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar a partir de: {documentSource.title}</button>}
 
             {status && <p className={`text-center text-xs mb-3 ${status.startsWith("Erro") ? "text-red-400" : "text-[#aaa]"}`}>{status}</p>}
 

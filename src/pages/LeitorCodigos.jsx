@@ -23,6 +23,7 @@ function LeitorCodigos() {
   const [imagePreview, setImagePreview] = useState("");
   const [originalCode, setOriginalCode] = useState("");
   const [improvedCode, setImprovedCode] = useState("");
+  const [improvementComment, setImprovementComment] = useState("");
   const [improving, setImproving] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const codeInputRef = useRef(null);
@@ -47,6 +48,43 @@ function LeitorCodigos() {
     } catch {
       setStatus("Não foi possível copiar o código.");
     }
+  };
+
+  const handleExport = () => {
+    const extensions = {
+      python: "py",
+      javascript: "js",
+      typescript: "ts",
+      java: "java",
+      "c++": "cpp",
+      c: "c",
+      "c#": "cs",
+      csharp: "cs",
+      html: "html",
+      css: "css",
+      json: "json",
+      sql: "sql",
+      php: "php",
+      ruby: "rb",
+      go: "go",
+      rust: "rs",
+      kotlin: "kt",
+      swift: "swift",
+      bash: "sh",
+      shell: "sh",
+    };
+    const normalizedLanguage = language.trim().toLowerCase();
+    const extension = extensions[normalizedLanguage] || "txt";
+    const fileName = `codigo-extraido.${extension}`;
+    const file = new Blob([editorValue], { type: "text/plain;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
   };
 
   const handleAnalyze = async (event) => {
@@ -89,6 +127,7 @@ function LeitorCodigos() {
       setEditorValue(data.codigo);
       setOriginalCode(data.codigo);
       setImprovedCode("");
+      setImprovementComment("");
       setStatus(`Linguagem detectada: ${data.linguagem || "não identificada"}`);
     } catch (requestError) {
       setStatus(`Erro: ${requestError.message}`);
@@ -107,7 +146,7 @@ function LeitorCodigos() {
     const formData = new FormData();
     if (pendingImageRef.current) formData.append("imagem", pendingImageRef.current);
     formData.append("codigo", originalCode);
-    formData.append("prompt", "Analise o código e sugira uma versão melhorada, mantendo o comportamento original. Retorne somente o código melhorado.");
+    formData.append("prompt", "Analise o código e sugira uma versão melhorada, mantendo o comportamento original. Retorne o código melhorado no campo codigo_melhorado e explique as alterações no campo comentario.");
 
     try {
       const response = await fetch(`${BACKEND_URL}/codigo`, {
@@ -122,6 +161,7 @@ function LeitorCodigos() {
       }
 
       setImprovedCode(nextCode);
+      setImprovementComment(data.comentario || data.melhorias || data.explicacao || "A IA revisou a organização, legibilidade e qualidade do código.");
       setStatus("Sugestão de melhoria gerada com sucesso!");
     } catch (requestError) {
       setStatus(`Erro: ${requestError.message}`);
@@ -230,12 +270,13 @@ function LeitorCodigos() {
                   <span style={{ fontSize: "10px", letterSpacing: "2px", color: "#29cc68", fontWeight: 700 }}>CÓDIGO COM MELHORIAS</span>
                 </div>
                 <textarea value={improvedCode} onChange={(e) => setImprovedCode(e.target.value)} style={{ width: "100%", minHeight: "220px", background: "#10131c", border: "1px solid #29cc68", borderRadius: "18px", padding: "16px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", boxSizing: "border-box" }} />
+                {improvementComment && <div style={{ marginTop: "10px", padding: "12px", borderRadius: "12px", background: "rgba(41,204,104,.08)", color: "#b8c9bd", fontSize: "12px", lineHeight: 1.5 }}><strong style={{ color: "#29cc68" }}>O que foi melhorado:</strong> {improvementComment}</div>}
               </div>
             )}
 
             <div style={{ display: "flex", gap: "10px" }}>
               <button onClick={handleCopy} style={{ flex: 1, border: "none", borderRadius: "16px", background: "#29cc68", color: "#000", fontSize: "14px", fontWeight: 700, padding: "15px", cursor: "pointer" }}>{copied ? "Copiado!" : "Copiar Código"}</button>
-              <button onClick={() => alert("Exportando código...")} style={{ border: "none", borderRadius: "16px", background: "#232632", color: "#fff", padding: "15px 20px", cursor: "pointer" }}>Exportar</button>
+              <button onClick={handleExport} style={{ border: "none", borderRadius: "16px", background: "#232632", color: "#fff", padding: "15px 20px", cursor: "pointer" }}>Exportar</button>
             </div>
 
           </div>
