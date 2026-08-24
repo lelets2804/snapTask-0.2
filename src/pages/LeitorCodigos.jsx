@@ -21,6 +21,9 @@ function LeitorCodigos() {
   const [status, setStatus] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [imagePreview, setImagePreview] = useState("");
+  const [originalCode, setOriginalCode] = useState("");
+  const [improvedCode, setImprovedCode] = useState("");
+  const [improving, setImproving] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const codeInputRef = useRef(null);
   const imagePreviewRef = useRef("");
@@ -84,11 +87,45 @@ function LeitorCodigos() {
 
       setLanguage(data.linguagem || "Código");
       setEditorValue(data.codigo);
+      setOriginalCode(data.codigo);
+      setImprovedCode("");
       setStatus(`Linguagem detectada: ${data.linguagem || "não identificada"}`);
     } catch (requestError) {
       setStatus(`Erro: ${requestError.message}`);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const requestImprovement = async () => {
+    if (!originalCode || improving) return;
+    if (!window.confirm("Deseja solicitar uma sugestão de melhoria para este código?")) return;
+
+    setImproving(true);
+    setStatus("Solicitando sugestões de melhoria...");
+
+    const formData = new FormData();
+    formData.append("codigo", originalCode);
+    formData.append("prompt", "Analise o código e sugira uma versão melhorada, mantendo o comportamento original. Retorne somente o código melhorado.");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/codigo`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      const nextCode = data.codigo_melhorado || data.codigo;
+      if (!response.ok || data.erro || !nextCode) {
+        throw new Error(data.erro || "Não foi possível gerar a melhoria.");
+      }
+
+      setImprovedCode(nextCode);
+      setStatus("Sugestão de melhoria gerada com sucesso!");
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setImproving(false);
     }
   };
 
@@ -179,6 +216,21 @@ function LeitorCodigos() {
             </div>
 
             <textarea value={editorValue} onChange={(e) => setEditorValue(e.target.value)} style={{ flex: 1, width: "100%", minHeight: "220px", background: "#10131c", border: "1px solid #232632", borderRadius: "18px", padding: "16px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", marginBottom: "16px", boxSizing: "border-box" }} />
+
+            {originalCode && (
+              <button type="button" onClick={requestImprovement} disabled={improving} style={{ width: "100%", border: "1px solid #29cc68", borderRadius: "14px", background: "rgba(41,204,104,.12)", color: "#29cc68", fontSize: "13px", fontWeight: 700, padding: "12px", cursor: improving ? "wait" : "pointer", opacity: improving ? .7 : 1, marginBottom: "16px" }}>
+                {improving ? "Gerando melhoria..." : "Sugestão de melhoria"}
+              </button>
+            )}
+
+            {improvedCode && (
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "10px", letterSpacing: "2px", color: "#29cc68", fontWeight: 700 }}>CÓDIGO COM MELHORIAS</span>
+                </div>
+                <textarea value={improvedCode} onChange={(e) => setImprovedCode(e.target.value)} style={{ width: "100%", minHeight: "220px", background: "#10131c", border: "1px solid #29cc68", borderRadius: "18px", padding: "16px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", boxSizing: "border-box" }} />
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: "10px" }}>
               <button onClick={handleCopy} style={{ flex: 1, border: "none", borderRadius: "16px", background: "#29cc68", color: "#000", fontSize: "14px", fontWeight: 700, padding: "15px", cursor: "pointer" }}>{copied ? "Copiado!" : "Copiar Código"}</button>

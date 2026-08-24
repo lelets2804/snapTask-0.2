@@ -290,7 +290,7 @@ function Libras() {
 
                   {(micActive || speechText) && (
                     <div style={{ width: "100%", marginTop: "30px" }}>
-                      <div style={{ fontSize: "11px", color: "#8a8a95", marginBottom: "10px" }}>Speech-to-Text</div>
+                      <div style={{ fontSize: "11px", color: "#8a8a95", marginBottom: "10px" }}>O que foi falado</div>
                       <div style={{ background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "16px", minHeight: "100px", lineHeight: 1.7 }}>
                         {speechText}{micActive && <span>|</span>}
                       </div>
