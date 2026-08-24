@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
 
 import brilho from "../assets/brilho.png";
 import editorDoc from "../assets/editor-doc.png";
@@ -11,19 +12,20 @@ import mao from "../assets/mao.png";
 import retorno from "../assets/retorno.png";
 import compartilhar from "../assets/compartilhar.png";
 
+const initialCards = [
+  { q: "O que é a Série de Fibonacci?", a: "Sequência onde cada número é a soma dos dois anteriores: 0, 1, 1, 2, 3, 5, 8..." },
+  { q: "O que é recursão?", a: "Técnica onde uma função chama a si mesma para resolver subproblemas menores." },
+  { q: "Complexidade do Fibonacci recursivo?", a: "O(2^n) — exponencial. Pode ser otimizado com memoização para O(n)." },
+];
+
 function Flashcards() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [current, setCurrent] = useState(0);
   const [flipped, setFlipped] = useState(false);
-
-  const cards = [
-    {q: "O que é a Série de Fibonacci?",
-    a: "Sequência onde cada número é a soma dos dois anteriores: 0, 1, 1, 2, 3, 5, 8...",},
-    {q: "O que é recursão?",
-    a: "Técnica onde uma função chama a si mesma para resolver subproblemas menores.",},
-    {q: "Complexidade do Fibonacci recursivo?",
-    a: "O(2^n) — exponencial. Pode ser otimizado com memoização para O(n).",},
-  ];
+  const [cards, setCards] = useState(initialCards);
+  const [generating, setGenerating] = useState(false);
+  const [status, setStatus] = useState("");
+  const imageInputRef = useRef(null);
 
   const card = cards[current];
 
@@ -45,6 +47,44 @@ function Flashcards() {
     setFlipped(!flipped);
   }
 
+  async function handleGenerate(event) {
+    const image = event.target.files?.[0];
+    if (!image) return;
+
+    setGenerating(true);
+    setStatus("Gerando flashcards com IA...");
+
+    const formData = new FormData();
+    formData.append("imagem", image);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/flashcards`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
+        throw new Error(data.erro || "Nenhum flashcard retornado.");
+      }
+
+      const generatedCards = data.cards.map((generatedCard) => ({
+        q: generatedCard.frente,
+        a: generatedCard.verso,
+      }));
+
+      setCards(generatedCards);
+      setCurrent(0);
+      setFlipped(false);
+      setStatus("Flashcards gerados com sucesso!");
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setGenerating(false);
+      event.target.value = "";
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center font-[system-ui]">
 
@@ -61,11 +101,11 @@ function Flashcards() {
             <MenuItem image={brilho} text="SnapTask"/>
           </Link>
 
-          <Link to="/editordoc" className="no-underline">
+          <Link to="/editor-doc" className="no-underline">
             <MenuItem image={editorDoc} text="Editor Doc"/>
           </Link>
 
-          <Link to="/leitordecod" className="no-underline">
+          <Link to="/leitor-codigos" className="no-underline">
             <MenuItem image={scaner} text="Leitor Códigos"/>
           </Link>
 
@@ -182,7 +222,15 @@ function Flashcards() {
 
             </div>
 
-            <button className=" w-full border-0 rounded-2xl p-4 bg-linear-to-br from-[#FFD700] to-[#FFB300] text-black text-sm font-bold cursor-pointer " >
+            <input ref={imageInputRef} type="file" accept={IMAGE_ACCEPT} onChange={handleGenerate} className="hidden" />
+
+            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={generating} className="w-full border-0 rounded-2xl p-4 mb-3 bg-[#232632] text-white text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-wait">
+              {generating ? "Gerando..." : "Gerar com IA (foto)"}
+            </button>
+
+            {status && <p className={`text-center text-xs mb-3 ${status.startsWith("Erro") ? "text-red-400" : "text-[#aaa]"}`}>{status}</p>}
+
+            <button type="button" className="w-full border-0 rounded-2xl p-4 bg-linear-to-br from-[#FFD700] to-[#FFB300] text-black text-sm font-bold cursor-pointer">
               Exportar para Anki / Quizlet
             </button>
 

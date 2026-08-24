@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
 
 import retorno from "../assets/retorno.png";
 import linkIcon from "../assets/link.png";
@@ -17,7 +18,11 @@ import mao from "../assets/mao.png";
 
 function QR() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [generated, setGenerated] = useState(false);
+  const [generated, setGenerated] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const imageInputRef = useRef(null);
 
   const menuItems = [
     { name: "Câmera", icon: camera, path: "/" },
@@ -31,7 +36,60 @@ function QR() {
   ];
 
   const handleGenerate = () => {
-    setGenerated(true);
+    if (generated) {
+      setGenerated(null);
+      setError("");
+      setCopied(false);
+      return;
+    }
+
+    imageInputRef.current?.click();
+  };
+
+  const handleImageChange = async (event) => {
+    const image = event.target.files?.[0];
+    if (!image) return;
+
+    setLoading(true);
+    setError("");
+
+    const formData = new FormData();
+    formData.append("imagem", image);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/gerar_qr`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Não foi possível gerar o link.");
+      }
+
+      const data = await response.json();
+      if (data.erro || !data.qr_base64 || !data.link) {
+        throw new Error(data.erro || "A resposta do servidor está incompleta.");
+      }
+
+      setGenerated({ qr: data.qr_base64, link: data.link });
+    } catch (requestError) {
+      setError(requestError.message || "Erro ao gerar QR.");
+    } finally {
+      setLoading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!generated?.link) return;
+
+    try {
+      await navigator.clipboard.writeText(generated.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Não foi possível copiar o link.");
+    }
   };
 
   return (
@@ -79,13 +137,33 @@ function QR() {
             </div>
 
             <div style={{ width: "70%", height: "250px", margin: "0 auto", background: "#ececec", borderRadius: "18px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "18px" }}>
-              <img src={linkIcon} alt="Link" style={{ width: "55px", height: "60px", opacity: .5 }} />
-              <p style={{ color: "#777", fontSize: "14px", margin: 0 }}>Gere um link para compartilhar</p>
+              {generated ? (
+                <img src={`data:image/png;base64,${generated.qr}`} alt="QR Code gerado" style={{ width: "180px", height: "180px" }} />
+              ) : (
+                <>
+                  <img src={linkIcon} alt="Link" style={{ width: "55px", height: "60px", opacity: .5 }} />
+                  <p style={{ color: "#777", fontSize: "14px", margin: 0 }}>{loading ? "Enviando e gerando QR..." : "Gere um link para compartilhar"}</p>
+                </>
+              )}
             </div>
 
-            <Link to="/qr-code" onClick={handleGenerate} style={{ marginTop: "22px", width: "100%", borderRadius: "16px", padding: "16px", background: "linear-gradient(135deg,#a855f7,#7c3aed)", color: "#fff", fontSize: "16px", fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
-              {generated ? "Link Gerado ✓" : "Gerar Link"}
-            </Link>
+            <input ref={imageInputRef} type="file" accept={IMAGE_ACCEPT} onChange={handleImageChange} style={{ display: "none" }} />
+
+            {generated && (
+              <div style={{ width: "100%", background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "14px", display: "flex", alignItems: "center", gap: "10px", marginTop: "20px", boxSizing: "border-box" }}>
+                <img src={linkIcon} alt="Link" style={{ width: "18px", height: "18px", filter: "brightness(0) invert(1)" }} />
+                <span style={{ color: "#d5d5dd", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{generated.link}</span>
+                <button onClick={handleCopy} style={{ background: "none", border: "none", color: "#FFD700", fontSize: "13px", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                  {copied ? "Copiado ✓" : "Copiar"}
+                </button>
+              </div>
+            )}
+
+            {error && <p style={{ color: "#ff7070", fontSize: "13px", textAlign: "center", margin: "14px 0 0" }}>{error}</p>}
+
+            <button onClick={handleGenerate} disabled={loading} style={{ marginTop: "22px", width: "100%", border: "none", borderRadius: "16px", padding: "16px", background: "linear-gradient(135deg,#a855f7,#7c3aed)", color: "#fff", fontSize: "16px", fontWeight: 600, cursor: loading ? "wait" : "pointer", opacity: loading ? .7 : 1, boxSizing: "border-box" }}>
+              {loading ? "Enviando..." : generated ? "Gerar novo link" : "Gerar Link"}
+            </button>
 
             <div style={{ marginTop: "14px", background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "14px", display: "flex", alignItems: "center", gap: "14px" }}>
               <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "#58367da2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

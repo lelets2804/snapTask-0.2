@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
 
 import camera from "../assets/camera.png";
 import brilho from "../assets/brilho.png";
@@ -15,6 +16,10 @@ import compartilhar from "../assets/compartilhar.png";
 function LeitorCodigos() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [language, setLanguage] = useState("Python");
+  const [status, setStatus] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const codeInputRef = useRef(null);
 
   const code = `def fibonacci(n):
     if n <= 1:
@@ -29,9 +34,45 @@ print(f"Resultado: {result}")`;
   const [editorValue, setEditorValue] = useState(code);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(editorValue);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(editorValue);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setStatus("Não foi possível copiar o código.");
+    }
+  };
+
+  const handleAnalyze = async (event) => {
+    const image = event.target.files?.[0];
+    if (!image) return;
+
+    setAnalyzing(true);
+    setStatus("Analisando código na imagem...");
+
+    const formData = new FormData();
+    formData.append("imagem", image);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/codigo`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.erro || !data.codigo) {
+        throw new Error(data.erro || "Não foi possível ler o código.");
+      }
+
+      setLanguage(data.linguagem || "Código");
+      setEditorValue(data.codigo);
+      setStatus(`Linguagem detectada: ${data.linguagem || "não identificada"}`);
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setAnalyzing(false);
+      event.target.value = "";
+    }
   };
 
   const menuItems = [
@@ -100,24 +141,22 @@ print(f"Resultado: {result}")`;
               <p style={{ color: "#7c8192", fontSize: "13px", margin: 0 }}>Foto do código fonte</p>
             </div>
 
+            <input ref={codeInputRef} type="file" accept={IMAGE_ACCEPT} onChange={handleAnalyze} style={{ display: "none" }} />
+
+            <button type="button" onClick={() => codeInputRef.current?.click()} disabled={analyzing} style={{ width: "100%", border: "none", borderRadius: "14px", background: "#29cc68", color: "#000", fontSize: "13px", fontWeight: 700, padding: "12px", cursor: analyzing ? "wait" : "pointer", opacity: analyzing ? .7 : 1, marginBottom: "16px" }}>
+              {analyzing ? "Analisando..." : "Analisar foto com IA"}
+            </button>
+
+            {status && <p style={{ color: status.startsWith("Erro") ? "#ff7070" : "#aaa", fontSize: "12px", textAlign: "center", margin: "-6px 0 12px" }}>{status}</p>}
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
               <span style={{ fontSize: "10px", letterSpacing: "2px", color: "#7d8291", fontWeight: 700 }}>CÓDIGO EXTRAÍDO</span>
-              <span style={{ background: "rgba(41,204,104,.15)", color: "#29cc68", padding: "5px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: 600 }}>Python</span>
+              <span style={{ background: "rgba(41,204,104,.15)", color: "#29cc68", padding: "5px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: 600 }}>{language}</span>
             </div>
 
             <div style={{ flex: 1, background: "#10131c", border: "1px solid #232632", borderRadius: "18px", overflow: "auto", padding: "16px", marginBottom: "16px" }}>
               <pre style={{ color: "#d7d7e0", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", margin: 0, whiteSpace: "pre-wrap" }}>
-                <code>
-                  <span style={{ color: "#b16cff", fontWeight: 600 }}>def</span>{" "}
-                  <span style={{ color: "#53a7ff" }}>fibonacci</span>(n):{"\n"}
-                  {"    "}<span style={{ color: "#b16cff", fontWeight: 600 }}>if</span> n &lt;= <span style={{ color: "#ffb347" }}>1</span>:{"\n"}
-                  {"        "}<span style={{ color: "#b16cff", fontWeight: 600 }}>return</span> n{"\n\n"}
-                  {"    "}<span style={{ color: "#b16cff", fontWeight: 600 }}>return</span>{" "}
-                  <span style={{ color: "#53a7ff" }}>fibonacci</span>(n-<span style={{ color: "#ffb347" }}>1</span>) +{" "}
-                  <span style={{ color: "#53a7ff" }}>fibonacci</span>(n-<span style={{ color: "#ffb347" }}>2</span>){"\n\n"}
-                  result = <span style={{ color: "#53a7ff" }}>fibonacci</span>(<span style={{ color: "#ffb347" }}>10</span>){"\n\n"}
-                  <span style={{ color: "#b16cff", fontWeight: 600 }}>print</span>(<span style={{ color: "#4de28c" }}>f"Resultado: &#123;result&#125;"</span>)
-                </code>
+                <code>{editorValue}</code>
               </pre>
             </div>
 

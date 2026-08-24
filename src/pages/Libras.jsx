@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { BACKEND_URL, VIDEO_ACCEPT } from "../config";
 
 import retorno from "../assets/retorno.png";
 import camera from "../assets/camera.png";
@@ -20,48 +21,87 @@ function Libras() {
   const [editableText, setEditableText] = useState("");
   const [micActive, setMicActive] = useState(false);
   const [speechText, setSpeechText] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoStatus, setVideoStatus] = useState("");
+  const [videoError, setVideoError] = useState("");
 
   const typingInterval = useRef(null);
-  const micInterval = useRef(null);
-
-  const fullText = "Bom dia! Meu nome é Ana. Estou apresentando o trabalho sobre acessibilidade digital e inclusão nas escolas públicas do Brasil.";
-
-  const words = ["Olá, ", "tudo ", "bem? ", "Eu ", "gostaria ", "de ", "saber ", "sobre ", "o ", "projeto."];
+  const videoInputRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const videoUrlRef = useRef("");
 
   useEffect(() => {
     return () => {
       clearInterval(typingInterval.current);
-      clearInterval(micInterval.current);
+      recognitionRef.current?.stop();
+      if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
     };
   }, []);
 
-  const startVideo = () => {
+  const handleVideoChange = async (event) => {
+    const video = event.target.files?.[0];
+    if (!video) return;
+
+    clearInterval(typingInterval.current);
+    if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+
+    const nextVideoUrl = URL.createObjectURL(video);
+    videoUrlRef.current = nextVideoUrl;
+    setVideoUrl(nextVideoUrl);
     clearInterval(typingInterval.current);
     setVideoStarted(true);
     setVideoFinished(false);
     setTypingText("");
     setEditableText("");
+    setVideoError("");
+    setVideoStatus(video.size > 10 * 1024 * 1024 ? "Vídeo grande, pode demorar um pouco..." : "Enviando vídeo para a IA...");
 
-    let index = 0;
+    const formData = new FormData();
+    formData.append("video", video);
 
-    typingInterval.current = setInterval(() => {
-      if (index < fullText.length) {
-        setTypingText((prev) => prev + fullText[index]);
-        index++;
-      } else {
-        clearInterval(typingInterval.current);
-        setVideoFinished(true);
-        setEditableText(fullText);
+    try {
+      const response = await fetch(`${BACKEND_URL}/libras`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || data.erro || !data.traducao) {
+        throw new Error(data.erro || "Não foi possível traduzir o vídeo.");
       }
-    }, 30);
+
+      const translation = data.traducao;
+      setVideoStatus("Vídeo processado");
+      let index = 0;
+      typingInterval.current = setInterval(() => {
+        if (index < translation.length) {
+          setTypingText((previous) => previous + translation[index]);
+          index += 1;
+        } else {
+          clearInterval(typingInterval.current);
+          setVideoFinished(true);
+          setEditableText(translation);
+        }
+      }, 30);
+    } catch (requestError) {
+      setVideoError(requestError.message);
+      setVideoStatus("Erro ao processar vídeo");
+      setTypingText(`Erro: ${requestError.message}`);
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const newVideo = () => {
     clearInterval(typingInterval.current);
+    if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+    videoUrlRef.current = "";
+    setVideoUrl("");
     setVideoStarted(false);
     setVideoFinished(false);
     setTypingText("");
     setEditableText("");
+    setVideoStatus("");
+    setVideoError("");
   };
 
   const startMic = () => {
@@ -69,22 +109,34 @@ function Libras() {
 
     setMicActive(true);
     setSpeechText("");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechText("Reconhecimento de voz não disponível neste navegador.");
+      setMicActive(false);
+      return;
+    }
 
-    let index = 0;
-
-    micInterval.current = setInterval(() => {
-      if (index < words.length) {
-        setSpeechText((prev) => prev + words[index]);
-        index++;
-      } else {
-        clearInterval(micInterval.current);
-      }
-    }, 600);
+    const recognition = new SpeechRecognition();
+    recognition.lang = "pt-BR";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let text = "";
+      for (const result of event.results) text += result[0].transcript;
+      setSpeechText(text);
+    };
+    recognition.onend = () => setMicActive(false);
+    recognition.onerror = (event) => {
+      setSpeechText(`Erro: ${event.error}`);
+      setMicActive(false);
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
   const stopMic = () => {
     setMicActive(false);
-    clearInterval(micInterval.current);
+    recognitionRef.current?.stop();
   };
 
   const menuItems = [
@@ -151,7 +203,7 @@ function Libras() {
               <div style={{ flex: 1, overflowY: "auto" }}>
 
                 {!videoStarted && (
-                  <button onClick={startVideo} style={{ width: "100%", aspectRatio: "16/9", border: "2px dashed rgba(255,159,67,.4)", background: "rgba(255,159,67,.05)", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "18px", color: "#fff", cursor: "pointer" }}>
+                  <button onClick={() => videoInputRef.current?.click()} style={{ width: "100%", aspectRatio: "16/9", border: "2px dashed rgba(255,159,67,.4)", background: "rgba(255,159,67,.05)", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "18px", color: "#fff", cursor: "pointer" }}>
                     <div style={{ width: "60px", height: "60px", borderRadius: "18px", background: "rgba(255,159,67,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "28px", color: "#ff9f43" }}>⬆</div>
                     <div>
                       <h3 style={{ fontSize: "16px", margin: 0 }}>Enviar vídeo</h3>
@@ -160,12 +212,15 @@ function Libras() {
                   </button>
                 )}
 
+                <input ref={videoInputRef} type="file" accept={VIDEO_ACCEPT} onChange={handleVideoChange} style={{ display: "none" }} />
+
                 {videoStarted && (
                   <div style={{ width: "100%", aspectRatio: "16/9", borderRadius: "20px", overflow: "hidden", position: "relative", background: "#141414", border: "1px solid #232632" }}>
+                    {videoUrl && <video src={videoUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .5 }} />}
                     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(255,159,67,.1),rgba(155,89,182,.1))" }} />
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
                       <div style={{ width: "70px", height: "70px", borderRadius: "20px", background: "rgba(255,159,67,.2)", marginBottom: "10px" }} />
-                      <p style={{ fontSize: "12px", color: "#aaa" }}>{videoFinished ? "Vídeo processado" : "Processando vídeo..."}</p>
+                      <p style={{ fontSize: "12px", color: videoError ? "#ff7070" : "#aaa" }}>{videoError || videoStatus || "Processando vídeo..."}</p>
                     </div>
                     {!videoFinished && <div style={{ position: "absolute", bottom: 0, left: 0, height: "4px", width: "100%", background: "#ff9f43" }} />}
                   </div>
@@ -186,7 +241,7 @@ function Libras() {
                       <textarea value={editableText} onChange={(e) => setEditableText(e.target.value)} style={{ width: "100%", minHeight: "140px", background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "16px", color: "#fff", fontSize: "14px", lineHeight: 1.7, resize: "none", boxSizing: "border-box", outline: "none" }} />
                     )}
 
-                    {videoFinished && <button onClick={newVideo} style={{ marginTop: "14px", width: "100%", border: "none", borderRadius: "14px", background: "#ff9f43", color: "#000", padding: "14px", fontWeight: 700, cursor: "pointer" }}>Novo Vídeo</button>}
+                    {(videoFinished || videoError) && <button onClick={newVideo} style={{ marginTop: "14px", width: "100%", border: "none", borderRadius: "14px", background: "#ff9f43", color: "#000", padding: "14px", fontWeight: 700, cursor: "pointer" }}>Novo Vídeo</button>}
                   </div>
                 )}
               </div>
