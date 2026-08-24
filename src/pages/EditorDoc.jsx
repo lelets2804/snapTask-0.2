@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { BACKEND_URL, DOCUMENT_ACCEPT } from "../config";
+import PromptComplemento from "../components/PromptComplemento";
 
 import cameraIcon from "../assets/camera.png";
 import brilhoIcon from "../assets/brilho.png";
@@ -111,6 +112,8 @@ function EditorDoc() {
   const [isProcessed, setIsProcessed] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState("");
+  const [promptOpen, setPromptOpen] = useState(false);
+  const pendingImageRef = useRef(null);
   const documentInputRef = useRef(null);
 
   const openDocument = (document) => {
@@ -136,6 +139,16 @@ function EditorDoc() {
     const image = event.target.files?.[0];
     if (!image) return;
 
+    pendingImageRef.current = image;
+    setPromptOpen(true);
+    event.target.value = "";
+  };
+
+  const transcribeImage = async ({ prompt }) => {
+    const image = pendingImageRef.current;
+    setPromptOpen(false);
+    if (!image) return;
+
     setIsTranscribing(true);
     setTranscriptionError("");
     setSelectedDocument({
@@ -146,6 +159,7 @@ function EditorDoc() {
 
     const formData = new FormData();
     formData.append("imagem", image);
+    formData.append("prompt", prompt);
 
     try {
       const response = await fetch(`${BACKEND_URL}/documento`, {
@@ -172,7 +186,6 @@ function EditorDoc() {
       }));
     } finally {
       setIsTranscribing(false);
-      event.target.value = "";
     }
   };
 
@@ -207,6 +220,7 @@ function EditorDoc() {
       </div>
 
       <div className="flex flex-col items-center p-5">
+        <PromptComplemento open={promptOpen} title="Complementar transcrição" onConfirm={transcribeImage} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
         <div className="text-center mb-5">
           <h1 className="text-[32px] font-bold bg-linear-to-br from-[#FFD700] to-[#FFA500] bg-clip-text text-transparent">
             JOVI Camera

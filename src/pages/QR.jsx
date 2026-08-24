@@ -26,7 +26,7 @@ function QR() {
 
   const menuItems = [
     { name: "Câmera", icon: camera, path: "/" },
-    { name: "SnapTask", icon: brilho, path: "/" },
+    { name: "SnapTask", icon: brilho, path: "/snaptask" },
     { name: "Editor Doc", icon: editorDoc, path: "/editor-doc" },
     { name: "Dev OCR", icon: scaner, path: "/leitor-codigos" },
     { name: "QR Share", icon: qrCode, path: "/qr" },
@@ -126,7 +126,7 @@ function QR() {
           <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
             
             <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", marginTop: "30px", marginBottom: "25px" }}>
-              <Link to="/" style={{ background: "none", border: "none", cursor: "pointer" }}>
+              <Link to="/snaptask" style={{ background: "none", border: "none", cursor: "pointer" }}>
                 <img src={retorno} alt="Voltar" style={{ width: "24px", height: "24px", filter: "brightness(0) invert(1)" }} />
               </Link>
 
