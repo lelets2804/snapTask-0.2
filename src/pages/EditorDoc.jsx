@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { BACKEND_URL, DOCUMENT_ACCEPT } from "../config";
 
 import cameraIcon from "../assets/camera.png";
 import brilhoIcon from "../assets/brilho.png";
@@ -95,8 +96,8 @@ Prioridades:
 const menuItems = [
   { label: "Câmera", icon: cameraIcon, path: "/" },
   { label: "SnapTask", icon: brilhoIcon, path: "/snaptask" },
-  { label: "Editor Doc", icon: editorDocIcon, path: "/editordoc" },
-  { label: "Leitor Códigos", icon: scannerIcon, path: "/leitordecod" },
+  { label: "Editor Doc", icon: editorDocIcon, path: "/editor-doc" },
+  { label: "Leitor Códigos", icon: scannerIcon, path: "/leitor-codigos" },
   { label: "QR Share", icon: qrCodeIcon, path: "/qr" },
   { label: "Galeria", icon: galeriaIcon, path: "/galeria" },
   { label: "Flashcards", icon: brainIcon, path: "/flashcards" },
@@ -108,6 +109,9 @@ function EditorDoc() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isProcessed, setIsProcessed] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState("");
+  const documentInputRef = useRef(null);
 
   const openDocument = (document) => {
     setSelectedDocument(document);
@@ -126,6 +130,50 @@ function EditorDoc() {
       setIsProcessing(false);
       setIsProcessed(true);
     }, 1500);
+  };
+
+  const handleTranscribe = async (event) => {
+    const image = event.target.files?.[0];
+    if (!image) return;
+
+    setIsTranscribing(true);
+    setTranscriptionError("");
+    setSelectedDocument({
+      title: "Transcrevendo com IA...",
+      date: "Aguarde",
+      text: "Processando imagem...",
+    });
+
+    const formData = new FormData();
+    formData.append("imagem", image);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/documento`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.erro || !data.texto) {
+        throw new Error(data.erro || "Não foi possível transcrever o documento.");
+      }
+
+      setSelectedDocument({
+        title: "Documento gerado pela IA",
+        date: "Agora",
+        text: data.texto,
+      });
+    } catch (requestError) {
+      setTranscriptionError(requestError.message);
+      setSelectedDocument((previous) => ({
+        ...previous,
+        title: "Erro ao transcrever",
+        text: "",
+      }));
+    } finally {
+      setIsTranscribing(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -196,6 +244,22 @@ function EditorDoc() {
               </div>
 
               <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+                <button type="button" onClick={() => documentInputRef.current?.click()} disabled={isTranscribing} className="w-full flex items-center gap-3.5 bg-[#10131c] border border-dashed border-[#6c63ff] rounded-[18px] p-3.5 cursor-pointer transition text-left hover:bg-[#171b26] disabled:opacity-50">
+                  <div className="w-12 h-12 rounded-[14px] bg-[#6c63ff25] flex items-center justify-center shrink-0">
+                    <img src={editorDocIcon} alt="" className="w-5.5 h-5.5 brightness-0 invert" />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm mb-0.75 font-semibold truncate">Transcrever imagem com IA</h3>
+                    <small className="text-[#8e8e9e] text-[10px]">Selecione uma foto de lousa ou caderno</small>
+                    <p className="text-[#777d8f] text-[11px] mt-1.25 overflow-hidden whitespace-nowrap text-ellipsis">O backend extrai e organiza o texto automaticamente</p>
+                  </div>
+
+                  <div className="text-[#777] text-lg">›</div>
+                </button>
+
+                <input ref={documentInputRef} type="file" accept={DOCUMENT_ACCEPT} onChange={handleTranscribe} className="hidden" />
+
                 {documents.map((document, index) => (
                   <button key={index} onClick={() => openDocument(document)} className="w-full flex items-center gap-3.5 bg-[#10131c] border border-[#232632] rounded-[18px] p-3.5 cursor-pointer transition text-left hover:bg-[#171b26]" >
                     <div className="w-12 h-12 rounded-[14px] bg-[#1f5eff25] flex items-center justify-center shrink-0">
@@ -275,8 +339,6 @@ function EditorDoc() {
 
               <div className="flex gap-2.5 mb-3.5">
                 <button onClick={processDocument} disabled={isProcessing} className="flex-1 bg-[#ffc400] text-black font-semibold rounded-[14px] p-3 flex items-center justify-center gap-2 cursor-pointer transition hover:opacity-90 disabled:opacity-50">
-                  <img src={maximizeIcon} alt="" className="w-3.5 h-3.5" />
-
                   <span>
                     {isProcessed
                       ? "Reprocessar"
@@ -295,8 +357,6 @@ function EditorDoc() {
                 </span>
 
                 <div className="flex items-center gap-1.25 bg-[#3793ff20] text-[#3793ff] px-2 py-1.25 rounded-full text-[10px] font-semibold">
-                  <img src={editIcon} alt="" className="w-2.5 h-2.5"/>
-
                   <span>Editável</span>
                 </div>
               </div>
