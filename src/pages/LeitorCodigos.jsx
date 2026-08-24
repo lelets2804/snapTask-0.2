@@ -105,6 +105,7 @@ function LeitorCodigos() {
     setStatus("Solicitando sugestões de melhoria...");
 
     const formData = new FormData();
+    if (pendingImageRef.current) formData.append("imagem", pendingImageRef.current);
     formData.append("codigo", originalCode);
     formData.append("prompt", "Analise o código e sugira uma versão melhorada, mantendo o comportamento original. Retorne somente o código melhorado.");
 
