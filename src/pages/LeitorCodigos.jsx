@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
+import PromptComplemento from "../components/PromptComplemento";
 
 import camera from "../assets/camera.png";
 import brilho from "../assets/brilho.png";
@@ -16,20 +17,26 @@ import compartilhar from "../assets/compartilhar.png";
 function LeitorCodigos() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [language, setLanguage] = useState("Python");
+  const [language, setLanguage] = useState("Linguagem");
   const [status, setStatus] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [imagePreview, setImagePreview] = useState("");
+  const [originalCode, setOriginalCode] = useState("");
+  const [improvedCode, setImprovedCode] = useState("");
+  const [improvementComment, setImprovementComment] = useState("");
+  const [improving, setImproving] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
   const codeInputRef = useRef(null);
+  const imagePreviewRef = useRef("");
+  const pendingImageRef = useRef(null);
 
-  const code = `def fibonacci(n):
-    if n <= 1:
-        return n
+  useEffect(() => {
+    return () => {
+      if (imagePreviewRef.current) URL.revokeObjectURL(imagePreviewRef.current);
+    };
+  }, []);
 
-    return fibonacci(n-1) + fibonacci(n-2)
-
-result = fibonacci(10)
-
-print(f"Resultado: {result}")`;
+  const code = `Código extraido...`;
 
   const [editorValue, setEditorValue] = useState(code);
 
@@ -43,8 +50,59 @@ print(f"Resultado: {result}")`;
     }
   };
 
+  const handleExport = () => {
+    const extensions = {
+      python: "py",
+      javascript: "js",
+      typescript: "ts",
+      java: "java",
+      "c++": "cpp",
+      c: "c",
+      "c#": "cs",
+      csharp: "cs",
+      html: "html",
+      css: "css",
+      json: "json",
+      sql: "sql",
+      php: "php",
+      ruby: "rb",
+      go: "go",
+      rust: "rs",
+      kotlin: "kt",
+      swift: "swift",
+      bash: "sh",
+      shell: "sh",
+    };
+    const normalizedLanguage = language.trim().toLowerCase();
+    const extension = extensions[normalizedLanguage] || "txt";
+    const fileName = `codigo-extraido.${extension}`;
+    const file = new Blob([editorValue], { type: "text/plain;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  };
+
   const handleAnalyze = async (event) => {
     const image = event.target.files?.[0];
+    if (!image) return;
+
+    if (imagePreviewRef.current) URL.revokeObjectURL(imagePreviewRef.current);
+    const nextPreview = URL.createObjectURL(image);
+    imagePreviewRef.current = nextPreview;
+    setImagePreview(nextPreview);
+    pendingImageRef.current = image;
+    setPromptOpen(true);
+    event.target.value = "";
+  };
+
+  const analyzeCode = async ({ prompt }) => {
+    const image = pendingImageRef.current;
+    setPromptOpen(false);
     if (!image) return;
 
     setAnalyzing(true);
@@ -52,6 +110,7 @@ print(f"Resultado: {result}")`;
 
     const formData = new FormData();
     formData.append("imagem", image);
+    formData.append("prompt", prompt);
 
     try {
       const response = await fetch(`${BACKEND_URL}/codigo`, {
@@ -66,12 +125,48 @@ print(f"Resultado: {result}")`;
 
       setLanguage(data.linguagem || "Código");
       setEditorValue(data.codigo);
+      setOriginalCode(data.codigo);
+      setImprovedCode("");
+      setImprovementComment("");
       setStatus(`Linguagem detectada: ${data.linguagem || "não identificada"}`);
     } catch (requestError) {
       setStatus(`Erro: ${requestError.message}`);
     } finally {
       setAnalyzing(false);
-      event.target.value = "";
+    }
+  };
+
+  const requestImprovement = async () => {
+    if (!originalCode || improving) return;
+    if (!window.confirm("Deseja solicitar uma sugestão de melhoria para este código?")) return;
+
+    setImproving(true);
+    setStatus("Solicitando sugestões de melhoria...");
+
+    const formData = new FormData();
+    if (pendingImageRef.current) formData.append("imagem", pendingImageRef.current);
+    formData.append("codigo", originalCode);
+    formData.append("prompt", "Analise o código e sugira uma versão melhorada, mantendo o comportamento original. Retorne o código melhorado no campo codigo_melhorado e explique as alterações no campo comentario.");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/codigo`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      const nextCode = data.codigo_melhorado || data.codigo;
+      if (!response.ok || data.erro || !nextCode) {
+        throw new Error(data.erro || "Não foi possível gerar a melhoria.");
+      }
+
+      setImprovedCode(nextCode);
+      setImprovementComment(data.comentario || data.melhorias || data.explicacao || "A IA revisou a organização, legibilidade e qualidade do código.");
+      setStatus("Sugestão de melhoria gerada com sucesso!");
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setImproving(false);
     }
   };
 
@@ -109,6 +204,7 @@ print(f"Resultado: {result}")`;
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "20px", width: "100%", boxSizing: "border-box" }}>
+        <PromptComplemento open={promptOpen} title="Complementar análise do código" onConfirm={analyzeCode} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
 
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
           <h1 style={{ margin: 0, fontSize: "32px", fontWeight: "bold", background: "linear-gradient(135deg,#FFD700,#FFA500)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>JOVI Camera</h1>
@@ -136,9 +232,15 @@ print(f"Resultado: {result}")`;
 
             </div>
 
-            <div style={{ height: "130px", border: "1px dashed #2f3342", borderRadius: "18px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "20px", background: "#10131c" }}>
-              <img src={scaner} alt="" style={{ width: "34px", height: "34px", filter: "brightness(0) invert(1)", opacity: ".6" }} />
-              <p style={{ color: "#7c8192", fontSize: "13px", margin: 0 }}>Foto do código fonte</p>
+            <div style={{ height: "130px", border: "1px dashed #2f3342", borderRadius: "18px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "20px", background: "#10131c", overflow: "hidden" }}>
+              {imagePreview ? (
+                <img src={imagePreview} alt="Prévia do código fonte" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                <>
+                  <img src={scaner} alt="" style={{ width: "34px", height: "34px", filter: "brightness(0) invert(1)", opacity: ".6" }} />
+                  <p style={{ color: "#7c8192", fontSize: "13px", margin: 0 }}>Foto do código fonte</p>
+                </>
+              )}
             </div>
 
             <input ref={codeInputRef} type="file" accept={IMAGE_ACCEPT} onChange={handleAnalyze} style={{ display: "none" }} />
@@ -154,17 +256,27 @@ print(f"Resultado: {result}")`;
               <span style={{ background: "rgba(41,204,104,.15)", color: "#29cc68", padding: "5px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: 600 }}>{language}</span>
             </div>
 
-            <div style={{ flex: 1, background: "#10131c", border: "1px solid #232632", borderRadius: "18px", overflow: "auto", padding: "16px", marginBottom: "16px" }}>
-              <pre style={{ color: "#d7d7e0", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", margin: 0, whiteSpace: "pre-wrap" }}>
-                <code>{editorValue}</code>
-              </pre>
-            </div>
+            <textarea value={editorValue} onChange={(e) => setEditorValue(e.target.value)} style={{ flex: 1, width: "100%", minHeight: "220px", background: "#10131c", border: "1px solid #232632", borderRadius: "18px", padding: "16px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", marginBottom: "16px", boxSizing: "border-box" }} />
 
-            <textarea value={editorValue} onChange={(e) => setEditorValue(e.target.value)} style={{ width: "100%", height: "110px", background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "14px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.6", fontFamily: "Consolas,monospace", marginBottom: "16px", boxSizing: "border-box" }} />
+            {originalCode && (
+              <button type="button" onClick={requestImprovement} disabled={improving} style={{ width: "100%", border: "1px solid #29cc68", borderRadius: "14px", background: "rgba(41,204,104,.12)", color: "#29cc68", fontSize: "13px", fontWeight: 700, padding: "12px", cursor: improving ? "wait" : "pointer", opacity: improving ? .7 : 1, marginBottom: "16px" }}>
+                {improving ? "Gerando melhoria..." : "Sugestão de melhoria"}
+              </button>
+            )}
+
+            {improvedCode && (
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "10px", letterSpacing: "2px", color: "#29cc68", fontWeight: 700 }}>CÓDIGO COM MELHORIAS</span>
+                </div>
+                <textarea value={improvedCode} onChange={(e) => setImprovedCode(e.target.value)} style={{ width: "100%", minHeight: "220px", background: "#10131c", border: "1px solid #29cc68", borderRadius: "18px", padding: "16px", resize: "none", outline: "none", color: "#fff", fontSize: "12px", lineHeight: "1.8", fontFamily: "Consolas,monospace", boxSizing: "border-box" }} />
+                {improvementComment && <div style={{ marginTop: "10px", padding: "12px", borderRadius: "12px", background: "rgba(41,204,104,.08)", color: "#b8c9bd", fontSize: "12px", lineHeight: 1.5 }}><strong style={{ color: "#29cc68" }}>O que foi melhorado:</strong> {improvementComment}</div>}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: "10px" }}>
               <button onClick={handleCopy} style={{ flex: 1, border: "none", borderRadius: "16px", background: "#29cc68", color: "#000", fontSize: "14px", fontWeight: 700, padding: "15px", cursor: "pointer" }}>{copied ? "Copiado!" : "Copiar Código"}</button>
-              <button onClick={() => alert("Exportando código...")} style={{ border: "none", borderRadius: "16px", background: "#232632", color: "#fff", padding: "15px 20px", cursor: "pointer" }}>Exportar</button>
+              <button onClick={handleExport} style={{ border: "none", borderRadius: "16px", background: "#232632", color: "#fff", padding: "15px 20px", cursor: "pointer" }}>Exportar</button>
             </div>
 
           </div>

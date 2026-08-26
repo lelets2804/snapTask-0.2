@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
+import PromptComplemento from "../components/PromptComplemento";
 
 import brilho from "../assets/brilho.png";
 import editorDoc from "../assets/editor-doc.png";
@@ -13,9 +14,9 @@ import retorno from "../assets/retorno.png";
 import compartilhar from "../assets/compartilhar.png";
 
 const initialCards = [
+  { q: "Pergunta", a: "Resposta..." },
   { q: "O que é a Série de Fibonacci?", a: "Sequência onde cada número é a soma dos dois anteriores: 0, 1, 1, 2, 3, 5, 8..." },
   { q: "O que é recursão?", a: "Técnica onde uma função chama a si mesma para resolver subproblemas menores." },
-  { q: "Complexidade do Fibonacci recursivo?", a: "O(2^n) — exponencial. Pode ser otimizado com memoização para O(n)." },
 ];
 
 function Flashcards() {
@@ -25,7 +26,21 @@ function Flashcards() {
   const [cards, setCards] = useState(initialCards);
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState("");
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [documentSource, setDocumentSource] = useState(() => {
+    try {
+      localStorage.removeItem("snapTask.flashcardsSource");
+      const source = JSON.parse(sessionStorage.getItem("snapTask.flashcardsSource") || "null");
+      sessionStorage.removeItem("snapTask.flashcardsSource");
+      return source;
+    } catch {
+      return null;
+    }
+  });
+  const [documentPromptOpen, setDocumentPromptOpen] = useState(false);
+  const [textPromptOpen, setTextPromptOpen] = useState(false);
   const imageInputRef = useRef(null);
+  const pendingImageRef = useRef(null);
 
   const card = cards[current];
 
@@ -51,11 +66,22 @@ function Flashcards() {
     const image = event.target.files?.[0];
     if (!image) return;
 
+    pendingImageRef.current = image;
+    setPromptOpen(true);
+    event.target.value = "";
+  }
+
+  async function generateFlashcards({ prompt }) {
+    const image = pendingImageRef.current;
+    setPromptOpen(false);
+    if (!image) return;
+
     setGenerating(true);
     setStatus("Gerando flashcards com IA...");
 
     const formData = new FormData();
     formData.append("imagem", image);
+    formData.append("prompt", prompt);
 
     try {
       const response = await fetch(`${BACKEND_URL}/flashcards`, {
@@ -81,7 +107,69 @@ function Flashcards() {
       setStatus(`Erro: ${requestError.message}`);
     } finally {
       setGenerating(false);
-      event.target.value = "";
+    }
+  }
+
+  async function generateFromDocument({ prompt }) {
+    if (!documentSource?.text) return;
+
+    setDocumentPromptOpen(false);
+    setGenerating(true);
+    setStatus("Gerando flashcards a partir do documento...");
+
+    const formData = new FormData();
+    formData.append("texto", documentSource.text);
+    formData.append("prompt", prompt);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
+        throw new Error(data.erro || "Nenhum flashcard retornado.");
+      }
+
+      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCurrent(0);
+      setFlipped(false);
+      setStatus("Flashcards gerados a partir do documento!");
+      sessionStorage.removeItem("snapTask.flashcardsSource");
+      setDocumentSource(null);
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function generateFromText({ prompt }) {
+    if (!prompt) {
+      setStatus("Digite ou fale um tema para gerar os flashcards.");
+      return;
+    }
+
+    setTextPromptOpen(false);
+    setGenerating(true);
+    setStatus("Gerando flashcards a partir do texto...");
+
+    const formData = new FormData();
+    formData.append("texto", prompt);
+    formData.append("prompt", "Gere flashcards didáticos sobre o texto fornecido.");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
+        throw new Error(data.erro || "Nenhum flashcard retornado.");
+      }
+
+      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCurrent(0);
+      setFlipped(false);
+      setStatus("Flashcards gerados a partir do texto!");
+    } catch (requestError) {
+      setStatus(`Erro: ${requestError.message}`);
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -129,6 +217,9 @@ function Flashcards() {
       </div>
 
       <div className="flex flex-col items-center p-5">
+        <PromptComplemento open={promptOpen} title="Complementar flashcards" onConfirm={generateFlashcards} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
+        <PromptComplemento open={documentPromptOpen} title="Complementar flashcards do documento" onConfirm={generateFromDocument} onCancel={() => setDocumentPromptOpen(false)} />
+        <PromptComplemento open={textPromptOpen} title="Gerar flashcards sem foto" onConfirm={generateFromText} onCancel={() => setTextPromptOpen(false)} />
 
         <div className="text-center mb-5">
 
@@ -172,9 +263,6 @@ function Flashcards() {
 
             </div>
 
-            <div className="text-[10px] tracking-[2px] text-[#777d8f] mb-3 font-bold">
-              PERGUNTA
-            </div>
 
             <div className="flex-1 flex items-center justify-center">
 
@@ -228,10 +316,14 @@ function Flashcards() {
               {generating ? "Gerando..." : "Gerar com IA (foto)"}
             </button>
 
+            <button type="button" onClick={() => setTextPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-transparent text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar por texto ou voz</button>
+
+            {documentSource?.requested && documentSource.text && <button type="button" onClick={() => setDocumentPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-[#ffc40012] text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar a partir de: {documentSource.title}</button>}
+
             {status && <p className={`text-center text-xs mb-3 ${status.startsWith("Erro") ? "text-red-400" : "text-[#aaa]"}`}>{status}</p>}
 
             <button type="button" className="w-full border-0 rounded-2xl p-4 bg-linear-to-br from-[#FFD700] to-[#FFB300] text-black text-sm font-bold cursor-pointer">
-              Exportar para Anki / Quizlet
+              Armazenar flashcards
             </button>
 
           </div>

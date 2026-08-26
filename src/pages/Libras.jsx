@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BACKEND_URL, VIDEO_ACCEPT } from "../config";
+import PromptComplemento from "../components/PromptComplemento";
 
 import retorno from "../assets/retorno.png";
 import camera from "../assets/camera.png";
@@ -24,11 +25,13 @@ function Libras() {
   const [videoUrl, setVideoUrl] = useState("");
   const [videoStatus, setVideoStatus] = useState("");
   const [videoError, setVideoError] = useState("");
+  const [promptOpen, setPromptOpen] = useState(false);
 
   const typingInterval = useRef(null);
   const videoInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const videoUrlRef = useRef("");
+  const pendingVideoRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -40,6 +43,16 @@ function Libras() {
 
   const handleVideoChange = async (event) => {
     const video = event.target.files?.[0];
+    if (!video) return;
+
+    pendingVideoRef.current = video;
+    setPromptOpen(true);
+    event.target.value = "";
+  };
+
+  const translateVideo = async ({ prompt, category }) => {
+    const video = pendingVideoRef.current;
+    setPromptOpen(false);
     if (!video) return;
 
     clearInterval(typingInterval.current);
@@ -58,6 +71,8 @@ function Libras() {
 
     const formData = new FormData();
     formData.append("video", video);
+    formData.append("prompt", prompt);
+    if (category) formData.append("categoria", category);
 
     try {
       const response = await fetch(`${BACKEND_URL}/libras`, {
@@ -87,7 +102,6 @@ function Libras() {
       setVideoStatus("Erro ao processar vídeo");
       setTypingText(`Erro: ${requestError.message}`);
     } finally {
-      event.target.value = "";
     }
   };
 
@@ -173,6 +187,7 @@ function Libras() {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "20px", width: "100%", boxSizing: "border-box" }}>
+        <PromptComplemento open={promptOpen} title="Complementar tradução em Libras" tags={["Abecedário", "Música", "Ação", "Escrever", "Saudações", "Números"]} onConfirm={translateVideo} onCancel={() => { pendingVideoRef.current = null; setPromptOpen(false); }} />
 
         <header style={{ textAlign: "center", marginBottom: "20px" }}>
           <h1 style={{ margin: 0, fontSize: "32px", fontWeight: "bold", background: "linear-gradient(135deg,#FFD700,#FFA500)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>JOVI Camera</h1>
@@ -273,11 +288,11 @@ function Libras() {
                     </div>
                   )}
 
-                  {micActive && (
+                  {(micActive || speechText) && (
                     <div style={{ width: "100%", marginTop: "30px" }}>
-                      <div style={{ fontSize: "11px", color: "#8a8a95", marginBottom: "10px" }}>Speech-to-Text</div>
+                      <div style={{ fontSize: "11px", color: "#8a8a95", marginBottom: "10px" }}>O que foi falado</div>
                       <div style={{ background: "#10131c", border: "1px solid #232632", borderRadius: "16px", padding: "16px", minHeight: "100px", lineHeight: 1.7 }}>
-                        {speechText}<span>|</span>
+                        {speechText}{micActive && <span>|</span>}
                       </div>
                     </div>
                   )}

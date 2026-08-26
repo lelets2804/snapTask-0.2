@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { BACKEND_URL, DOCUMENT_ACCEPT } from "../config";
+import PromptComplemento from "../components/PromptComplemento";
 
 import cameraIcon from "../assets/camera.png";
 import brilhoIcon from "../assets/brilho.png";
@@ -111,6 +112,18 @@ function EditorDoc() {
   const [isProcessed, setIsProcessed] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState("");
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [improvementPromptOpen, setImprovementPromptOpen] = useState(false);
+  const [isImproving, setIsImproving] = useState(false);
+  const [improvementComment, setImprovementComment] = useState("");
+  const [savedDocuments, setSavedDocuments] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("snapTask.documents") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const pendingImageRef = useRef(null);
   const documentInputRef = useRef(null);
 
   const openDocument = (document) => {
@@ -121,6 +134,53 @@ function EditorDoc() {
   const closeDocument = () => {
     setSelectedDocument(null);
     setIsProcessed(false);
+  };
+
+  const saveDocument = () => {
+    if (!selectedDocument?.text) return;
+
+    const savedDocument = {
+      ...selectedDocument,
+      id: selectedDocument.id || Date.now(),
+      title: selectedDocument.title === "Documento gerado pela IA" ? "Documento salvo" : selectedDocument.title,
+      date: "Agora",
+      preview: `${selectedDocument.text.slice(0, 80)}...`,
+    };
+    const nextDocuments = [savedDocument, ...savedDocuments.filter((document) => document.id !== savedDocument.id)];
+    setSavedDocuments(nextDocuments);
+    localStorage.setItem("snapTask.documents", JSON.stringify(nextDocuments));
+    setSelectedDocument(savedDocument);
+  };
+
+  const sendToFlashcards = () => {
+    if (!selectedDocument?.text) return;
+    sessionStorage.setItem("snapTask.flashcardsSource", JSON.stringify({ text: selectedDocument.text, title: selectedDocument.title, requested: true }));
+    window.location.href = "/flashcards";
+  };
+
+  const improveDocument = async ({ prompt }) => {
+    if (!selectedDocument?.text) return;
+    setImprovementPromptOpen(false);
+    setIsImproving(true);
+    setTranscriptionError("");
+
+    const formData = new FormData();
+    if (pendingImageRef.current) formData.append("imagem", pendingImageRef.current);
+    formData.append("texto", selectedDocument.text);
+    formData.append("prompt", prompt || "Sugira melhorias de organização, clareza e estrutura no documento.");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/documento`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok || data.erro || !data.texto) throw new Error(data.erro || "Não foi possível melhorar o documento.");
+
+      setSelectedDocument((previous) => ({ ...previous, text: data.texto }));
+      setImprovementComment(data.comentario || data.melhorias || "A IA reorganizou e aprimorou o conteúdo do documento.");
+    } catch (requestError) {
+      setTranscriptionError(requestError.message);
+    } finally {
+      setIsImproving(false);
+    }
   };
 
   const processDocument = () => {
@@ -136,6 +196,16 @@ function EditorDoc() {
     const image = event.target.files?.[0];
     if (!image) return;
 
+    pendingImageRef.current = image;
+    setPromptOpen(true);
+    event.target.value = "";
+  };
+
+  const transcribeImage = async ({ prompt }) => {
+    const image = pendingImageRef.current;
+    setPromptOpen(false);
+    if (!image) return;
+
     setIsTranscribing(true);
     setTranscriptionError("");
     setSelectedDocument({
@@ -146,6 +216,7 @@ function EditorDoc() {
 
     const formData = new FormData();
     formData.append("imagem", image);
+    formData.append("prompt", prompt);
 
     try {
       const response = await fetch(`${BACKEND_URL}/documento`, {
@@ -172,7 +243,6 @@ function EditorDoc() {
       }));
     } finally {
       setIsTranscribing(false);
-      event.target.value = "";
     }
   };
 
@@ -207,6 +277,8 @@ function EditorDoc() {
       </div>
 
       <div className="flex flex-col items-center p-5">
+        <PromptComplemento open={promptOpen} title="Complementar transcrição" onConfirm={transcribeImage} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
+        <PromptComplemento open={improvementPromptOpen} title="Sugestões de melhoria" onConfirm={improveDocument} onCancel={() => setImprovementPromptOpen(false)} />
         <div className="text-center mb-5">
           <h1 className="text-[32px] font-bold bg-linear-to-br from-[#FFD700] to-[#FFA500] bg-clip-text text-transparent">
             JOVI Camera
@@ -260,7 +332,7 @@ function EditorDoc() {
 
                 <input ref={documentInputRef} type="file" accept={DOCUMENT_ACCEPT} onChange={handleTranscribe} className="hidden" />
 
-                {documents.map((document, index) => (
+                {[...savedDocuments, ...documents].map((document, index) => (
                   <button key={index} onClick={() => openDocument(document)} className="w-full flex items-center gap-3.5 bg-[#10131c] border border-[#232632] rounded-[18px] p-3.5 cursor-pointer transition text-left hover:bg-[#171b26]" >
                     <div className="w-12 h-12 rounded-[14px] bg-[#1f5eff25] flex items-center justify-center shrink-0">
                       <img src={editorDocIcon} alt="" className="w-5.5 h-5.5 brightness-0 invert" />
@@ -349,6 +421,10 @@ function EditorDoc() {
                 <button className="bg-[#1a1a24] text-white border border-[#2a2a35] rounded-[14px] px-4 py-3 cursor-pointer transition hover:bg-[#22222f]">
                   <span>Contraste</span>
                 </button>
+
+                <button onClick={() => setImprovementPromptOpen(true)} disabled={isImproving} className="bg-[#1a1a24] text-[#ffc400] border border-[#ffc400] rounded-[14px] px-4 py-3 cursor-pointer transition hover:bg-[#22222f] disabled:opacity-50">
+                  <span>{isImproving ? "Analisando..." : "Sugestões de melhoria"}</span>
+                </button>
               </div>
 
               <div className="flex items-center justify-between mb-2.5">
@@ -368,6 +444,13 @@ function EditorDoc() {
                   }))
                 }
                 className="flex-1 bg-[#10131c] border border-[#232632] rounded-[18px] p-4 text-white resize-none outline-none text-xs leading-[1.7] font-mono focus:border-[#ffc400]"/>
+
+              {improvementComment && <div className="mt-3 p-3 rounded-xl bg-[#ffc40012] border border-[#ffc40040] text-[#c9c3a6] text-xs leading-relaxed"><strong className="text-[#ffc400]">O que foi melhorado:</strong> {improvementComment}</div>}
+
+              <div className="flex gap-2.5 mt-3">
+                <button onClick={saveDocument} className="flex-1 bg-[#ffc400] text-black font-semibold rounded-[14px] p-3 cursor-pointer transition hover:opacity-90">Salvar documento</button>
+                <button onClick={sendToFlashcards} className="flex-1 bg-[#1a1a24] text-[#ffc400] border border-[#ffc400] rounded-[14px] p-3 cursor-pointer transition hover:bg-[#22222f]">Gerar Flashcards</button>
+              </div>
             </div>
           )}
         </div>
