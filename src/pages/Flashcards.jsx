@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { BACKEND_URL, IMAGE_ACCEPT } from "../config";
 import PromptComplemento from "../components/PromptComplemento";
-
+import camera from "../assets/camera.png";
 import brilho from "../assets/brilho.png";
 import editorDoc from "../assets/editor-doc.png";
 import scaner from "../assets/scaner.png";
@@ -20,13 +20,31 @@ const initialCards = [
 ];
 
 function Flashcards() {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [current, setCurrent] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [cards, setCards] = useState(initialCards);
+
+  const [cards, setCards] = useState(() => {
+    try {
+      const savedFlashcards = JSON.parse(sessionStorage.getItem("snapTask.openSavedFlashcards") || "null");
+
+      if (savedFlashcards?.cards && Array.isArray(savedFlashcards.cards) && savedFlashcards.cards.length > 0) {
+        sessionStorage.removeItem("snapTask.openSavedFlashcards");
+        return savedFlashcards.cards;
+      }
+    } catch {
+      sessionStorage.removeItem("snapTask.openSavedFlashcards");
+    }
+
+    return initialCards;
+  });
+
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
   const [promptOpen, setPromptOpen] = useState(false);
+
   const [documentSource, setDocumentSource] = useState(() => {
     try {
       localStorage.removeItem("snapTask.flashcardsSource");
@@ -37,11 +55,12 @@ function Flashcards() {
       return null;
     }
   });
+
   const [documentPromptOpen, setDocumentPromptOpen] = useState(false);
   const [textPromptOpen, setTextPromptOpen] = useState(false);
+
   const imageInputRef = useRef(null);
   const pendingImageRef = useRef(null);
-
   const card = cards[current];
 
   function nextCard() {
@@ -73,11 +92,14 @@ function Flashcards() {
 
   async function generateFlashcards({ prompt }) {
     const image = pendingImageRef.current;
+
     setPromptOpen(false);
+
     if (!image) return;
 
     setGenerating(true);
     setStatus("Gerando flashcards com IA...");
+    setSaveStatus("");
 
     const formData = new FormData();
     formData.append("imagem", image);
@@ -90,6 +112,7 @@ function Flashcards() {
       });
 
       const data = await response.json();
+
       if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
         throw new Error(data.erro || "Nenhum flashcard retornado.");
       }
@@ -116,22 +139,35 @@ function Flashcards() {
     setDocumentPromptOpen(false);
     setGenerating(true);
     setStatus("Gerando flashcards a partir do documento...");
+    setSaveStatus("");
 
     const formData = new FormData();
     formData.append("texto", documentSource.text);
     formData.append("prompt", prompt);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const response = await fetch(`${BACKEND_URL}/flashcards`, {
+        method: "POST",
+        body: formData,
+      });
+
       const data = await response.json();
+
       if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
         throw new Error(data.erro || "Nenhum flashcard retornado.");
       }
 
-      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCards(
+        data.cards.map((generatedCard) => ({
+          q: generatedCard.frente,
+          a: generatedCard.verso,
+        }))
+      );
+
       setCurrent(0);
       setFlipped(false);
       setStatus("Flashcards gerados a partir do documento!");
+
       sessionStorage.removeItem("snapTask.flashcardsSource");
       setDocumentSource(null);
     } catch (requestError) {
@@ -150,19 +186,31 @@ function Flashcards() {
     setTextPromptOpen(false);
     setGenerating(true);
     setStatus("Gerando flashcards a partir do texto...");
+    setSaveStatus("");
 
     const formData = new FormData();
     formData.append("texto", prompt);
     formData.append("prompt", "Gere flashcards didáticos sobre o texto fornecido.");
 
     try {
-      const response = await fetch(`${BACKEND_URL}/flashcards`, { method: "POST", body: formData });
+      const response = await fetch(`${BACKEND_URL}/flashcards`, {
+        method: "POST",
+        body: formData,
+      });
+
       const data = await response.json();
+
       if (!response.ok || data.erro || !Array.isArray(data.cards) || data.cards.length === 0) {
         throw new Error(data.erro || "Nenhum flashcard retornado.");
       }
 
-      setCards(data.cards.map((generatedCard) => ({ q: generatedCard.frente, a: generatedCard.verso })));
+      setCards(
+        data.cards.map((generatedCard) => ({
+          q: generatedCard.frente,
+          a: generatedCard.verso,
+        }))
+      );
+
       setCurrent(0);
       setFlipped(false);
       setStatus("Flashcards gerados a partir do texto!");
@@ -173,36 +221,112 @@ function Flashcards() {
     }
   }
 
+  function generateDocumentFromFlashcards() {
+    if (!cards.length) {
+      setStatus("Não há flashcards para gerar um documento.");
+      return;
+    }
+
+    try {
+      const documentText = [
+        "RESUMO DE ESTUDOS",
+        "",
+        `Documento criado a partir de ${cards.length} ${cards.length === 1 ? "flashcard" : "flashcards"}.`,
+        "",
+        ...cards.map(
+          (flashcard, index) =>
+            [
+              `${index + 1}. ${flashcard.q}`,
+              "",
+              `Resposta: ${flashcard.a}`,
+              "",
+              "────────────────────────────",
+              "",
+            ].join("\n")
+        ),
+      ].join("\n");
+
+      const generatedDocument = {
+        id: Date.now(),
+        title: "Documento gerado a partir dos Flashcards",
+        date: "Agora",
+        text: documentText,
+      };
+
+      sessionStorage.setItem("snapTask.generatedDocument", JSON.stringify(generatedDocument));
+      navigate("/editor-doc");
+    } catch {
+      setStatus("Erro ao gerar o documento a partir dos flashcards.");
+    }
+  }
+
+  function saveFlashcards() {
+    if (!cards.length) {
+      setSaveStatus("Não há flashcards para armazenar.");
+      return;
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem("snapTask.savedFlashcards") || "[]");
+
+      const newFlashcardSet = {
+        id: Date.now(),
+        title: `Flashcards - ${new Date().toLocaleDateString("pt-BR")}`,
+        date: new Date().toLocaleString("pt-BR"),
+        cards,
+      };
+
+      const updated = [newFlashcardSet, ...saved];
+
+      localStorage.setItem("snapTask.savedFlashcards", JSON.stringify(updated));
+
+      setSaveStatus("Flashcards armazenados com sucesso!");
+    } catch {
+      setSaveStatus("Erro ao armazenar os flashcards.");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center font-[system-ui]">
-
-      <button onClick={() => setMenuOpen(!menuOpen)} className="fixed top-1/2 right-5 -translate-y-1/2 w-14 h-14 bg-[#FFD700] border-0 border-l-4 border-black rounded-l-xl flex items-center justify-center z-1000 cursor-pointer">
-        <span className="text-[32px] font-bold text-black"> &lt; </span>
+      <button
+        onClick={() => setMenuOpen(!menuOpen)}
+        className="fixed top-1/2 right-0 -translate-y-1/2 w-14 h-18.5 bg-[#FFD700] border-0 border-l-4 border-black rounded-l-[14px] flex items-center justify-center z-1000 cursor-pointer transition hover:bg-[#ffcc00]"
+      >
+        <span className="text-[34px] font-black text-black leading-none">&lt;</span>
       </button>
 
-      <div className={`fixed top-1/2 -translate-y-1/2 w-55 bg-[rgba(30,30,40,0.95)] backdrop-blur-xl transition-all duration-300 z-999 border-l-2 border-[#FFD700] rounded-l-xl py-2 ${menuOpen ? "right-15" : "-right-55"}`} >
-        <div className="flex flex-col gap-1">
+      <div
+        className={`fixed top-1/2 -translate-y-1/2 w-55 bg-[rgba(20,20,30,0.96)] backdrop-blur-xl border-l-2 border-[#FFD700] rounded-l-[14px] overflow-hidden shadow-[-8px_0_30px_rgba(0,0,0,0.45)] transition-all duration-300 z-999 ${
+          menuOpen ? "right-14" : "-right-55"
+        }`}
+      >
+        <div className="flex flex-col py-2">
+          <div className="text-[#FFD700] text-lg font-extrabold tracking-[1px] px-4 py-3 border-b border-[rgba(255,215,0,0.25)] mb-2">
+            DEV NAV
+          </div>
 
-          <div className="px-4 pt-3 pb-2 text-[#FFD700] text-sm font-bold border-b border-[rgba(255,215,0,0.3)] mb-2"> DEV NAV </div>
+          <Link to="/" className="no-underline">
+            <MenuItem image={camera} text="Câmera" />
+          </Link>
 
           <Link to="/snaptask" className="no-underline">
-            <MenuItem image={brilho} text="SnapTask"/>
+            <MenuItem image={brilho} text="SnapTask" />
           </Link>
 
           <Link to="/editor-doc" className="no-underline">
-            <MenuItem image={editorDoc} text="Editor Doc"/>
+            <MenuItem image={editorDoc} text="Editor Doc" />
           </Link>
 
           <Link to="/leitor-codigos" className="no-underline">
-            <MenuItem image={scaner} text="Leitor Códigos"/>
+            <MenuItem image={scaner} text="Leitor Códigos" />
           </Link>
 
           <Link to="/qr" className="no-underline">
-            <MenuItem image={qrCode} text="QR Share"/>
+            <MenuItem image={qrCode} text="QR Share" />
           </Link>
 
           <Link to="/galeria" className="no-underline">
-            <MenuItem image={galeria} text="Galeria"/>
+            <MenuItem image={galeria} text="Galeria" />
           </Link>
 
           <Link to="/flashcards" className="no-underline">
@@ -212,93 +336,123 @@ function Flashcards() {
           <Link to="/libras" className="no-underline">
             <MenuItem image={mao} text="Libras" />
           </Link>
-
         </div>
       </div>
 
       <div className="flex flex-col items-center p-5">
-        <PromptComplemento open={promptOpen} title="Complementar flashcards" onConfirm={generateFlashcards} onCancel={() => { pendingImageRef.current = null; setPromptOpen(false); }} />
-        <PromptComplemento open={documentPromptOpen} title="Complementar flashcards do documento" onConfirm={generateFromDocument} onCancel={() => setDocumentPromptOpen(false)} />
-        <PromptComplemento open={textPromptOpen} title="Gerar flashcards sem foto" onConfirm={generateFromText} onCancel={() => setTextPromptOpen(false)} />
+        <PromptComplemento
+          open={promptOpen}
+          title="Complementar flashcards"
+          onConfirm={generateFlashcards}
+          onCancel={() => {
+            pendingImageRef.current = null;
+            setPromptOpen(false);
+          }}
+        />
+
+        <PromptComplemento
+          open={documentPromptOpen}
+          title="Complementar flashcards do documento"
+          onConfirm={generateFromDocument}
+          onCancel={() => setDocumentPromptOpen(false)}
+        />
+
+        <PromptComplemento
+          open={textPromptOpen}
+          title="Gerar flashcards sem foto"
+          onConfirm={generateFromText}
+          onCancel={() => setTextPromptOpen(false)}
+        />
 
         <div className="text-center mb-5">
-
-          <h1 className=" text-[32px] font-bold bg-linear-to-br from-[#FFD700] to-[#FFA500] bg-clip-text text-transparent">
+          <h1 className="text-[32px] font-bold bg-linear-to-br from-[#FFD700] to-[#FFA500] bg-clip-text text-transparent">
             JOVI Camera
           </h1>
 
           <p className="text-[#7e7e8a] mt-1 text-sm">
             Experiência de câmera intuitiva + SnapTask para processamento inteligente
           </p>
-
         </div>
 
-        <div className=" w-97.5 h-211 bg-black rounded-[40px] border-2 border-[#2a2a35] overflow-hidden relative p-5 max-[768px]:w-screen max-[768px]:h-screen max-[768px]:rounded-none">
-
-          <div className="w-full h-full flex flex-col">
-
-            <div className="flex items-center justify-between mt-6.25 mb-5">
-
-              <Link
-                to="/snaptask" className="bg-transparent border-0">
-                <img src={retorno} alt="Voltar" className="w-5.5 h-5.5 brightness-0 invert" />
+        <div className="w-97.5 h-211 bg-black rounded-[40px] border-2 border-[#2a2a35] overflow-hidden relative p-5 max-[768px]:w-screen max-[768px]:h-screen max-[768px]:rounded-none">
+          <div className="w-full h-full flex flex-col overflow-y-auto pr-1 scrollbar-hide">
+            <div className="flex items-center justify-between mt-6.25 mb-5 shrink-0">
+              <Link to="/snaptask" className="bg-transparent border-0">
+                <img
+                  src={retorno}
+                  alt="Voltar"
+                  className="w-5.5 h-5.5 brightness-0 invert"
+                />
               </Link>
 
               <div className="text-center max-w-55">
-
                 <h2 className="text-[#FFD700] text-xl font-bold">
                   Flashcards IA
                 </h2>
 
                 <span className="text-[#8a8a95] text-[11px]">
-                  3 cartões gerados a partir da foto capturada
+                  {cards.length}{" "}
+                  {cards.length === 1
+                    ? "cartão gerado"
+                    : "cartões gerados"}
                 </span>
-
               </div>
 
               <button
-                className="bg-transparent border-0 cursor-pointer" >
-                <img src={compartilhar} alt="Compartilhar" className="w-5 h-5 brightness-0 invert opacity-80"/>
+                type="button"
+                className="bg-transparent border-0 cursor-pointer"
+              >
+                <img
+                  src={compartilhar}
+                  alt="Compartilhar"
+                  className="w-5 h-5 brightness-0 invert opacity-80"
+                />
               </button>
-
             </div>
 
-
-            <div className="flex-1 flex items-center justify-center">
-
-              <div onClick={toggleCard} className=" w-full max-w-[320px] h-105 bg-[rgba(20,20,30,0.95)] border border-[#232632] rounded-[28px] p-7.5 relative flex items-center justify-center text-center cursor-pointer transition-all duration-300 overflow-hidden hover:-translate-y-0.75" >
-
-                <div className={` absolute inset-0 p-7.5 flex flex-col items-center justify-center transition-opacity duration-300 ${flipped ? "opacity-0" : "opacity-100"}`} >
-
+            <div className="flex items-center justify-center py-3 shrink-0">
+              <div
+                onClick={toggleCard}
+                className="w-full max-w-[320px] h-105 bg-[rgba(20,20,30,0.95)] border border-[#232632] rounded-[28px] p-7.5 relative flex items-center justify-center text-center cursor-pointer transition-all duration-300 overflow-hidden hover:-translate-y-0.75"
+              >
+                <div
+                  className={`absolute inset-0 p-7.5 flex flex-col items-center justify-center transition-opacity duration-300 ${
+                    flipped ? "opacity-0" : "opacity-100"
+                  }`}
+                >
                   <p className="text-white text-2xl leading-normal font-bold">
-                    {card.q}
+                    {card?.q}
                   </p>
-
                 </div>
 
-                <div className={`absolute inset-0 p-7.5 flex flex-col items-center justify-center transition-opacity duration-300 ${flipped ? "opacity-100" : "opacity-0"}`}>
-
+                <div
+                  className={`absolute inset-0 p-7.5 flex flex-col items-center justify-center transition-opacity duration-300 ${
+                    flipped ? "opacity-100" : "opacity-0"
+                  }`}
+                >
                   <span className="text-[#FFD700] text-[10px] tracking-[2px] mb-4 font-bold">
                     RESPOSTA
                   </span>
 
                   <p className="text-[#d7d7df] text-[15px] leading-[1.8]">
-                    {card.a}
+                    {card?.a}
                   </p>
-
                 </div>
 
                 <span className="absolute bottom-4.5 text-[#737889] text-[11px]">
-                  {flipped ? "Toque para ver pergunta" : "Toque para ver resposta"}
+                  {flipped
+                    ? "Toque para ver pergunta"
+                    : "Toque para ver resposta"}
                 </span>
-
               </div>
-
             </div>
 
-            <div className="flex items-center justify-center gap-5 mt-5 mb-5">
-
-              <button onClick={previousCard} disabled={current === 0} className="w-12 h-12 rounded-full border border-[#232632] bg-[#10131c] text-white text-[28px] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ">
+            <div className="flex items-center justify-center gap-5 mt-5 mb-5 shrink-0">
+              <button
+                onClick={previousCard}
+                disabled={current === 0}
+                className="w-12 h-12 rounded-full border border-[#232632] bg-[#10131c] text-white text-[28px] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
                 ‹
               </button>
 
@@ -306,44 +460,129 @@ function Flashcards() {
                 {current + 1} / {cards.length}
               </span>
 
-              <button onClick={nextCard} disabled={current === cards.length - 1} className=" w-12 h-12 rounded-full border border-[#232632] bg-[#10131c] text-white text-[28px] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed "> › </button>
-
+              <button
+                onClick={nextCard}
+                disabled={current === cards.length - 1}
+                className="w-12 h-12 rounded-full border border-[#232632] bg-[#10131c] text-white text-[28px] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                ›
+              </button>
             </div>
 
-            <input ref={imageInputRef} type="file" accept={IMAGE_ACCEPT} onChange={handleGenerate} className="hidden" />
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept={IMAGE_ACCEPT}
+              onChange={handleGenerate}
+              className="hidden"
+            />
 
-            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={generating} className="w-full border-0 rounded-2xl p-4 mb-3 bg-[#232632] text-white text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-wait">
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={generating}
+              className="w-full border-0 rounded-2xl p-4 mb-3 bg-[#232632] text-white text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-wait shrink-0"
+            >
               {generating ? "Gerando..." : "Gerar com IA (foto)"}
             </button>
 
-            <button type="button" onClick={() => setTextPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-transparent text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar por texto ou voz</button>
+            <button
+              type="button"
+              onClick={() => setTextPromptOpen(true)}
+              disabled={generating}
+              className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-transparent text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              Gerar por texto ou voz
+            </button>
 
-            {documentSource?.requested && documentSource.text && <button type="button" onClick={() => setDocumentPromptOpen(true)} disabled={generating} className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-[#ffc40012] text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50">Gerar a partir de: {documentSource.title}</button>}
+            {documentSource?.requested && documentSource.text && (
+              <button
+                type="button"
+                onClick={() => setDocumentPromptOpen(true)}
+                disabled={generating}
+                className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-[#ffc40012] text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                Gerar a partir de: {documentSource.title}
+              </button>
+            )}
 
-            {status && <p className={`text-center text-xs mb-3 ${status.startsWith("Erro") ? "text-red-400" : "text-[#aaa]"}`}>{status}</p>}
+            {status && (
+              <p
+                className={`text-center text-xs mb-3 shrink-0 ${
+                  status.startsWith("Erro")
+                    ? "text-red-400"
+                    : "text-[#aaa]"
+                }`}
+              >
+                {status}
+              </p>
+            )}
 
-            <button type="button" className="w-full border-0 rounded-2xl p-4 bg-linear-to-br from-[#FFD700] to-[#FFB300] text-black text-sm font-bold cursor-pointer">
+            <button
+              type="button"
+              onClick={generateDocumentFromFlashcards}
+              disabled={generating || !cards.length}
+              className="w-full border border-[#ffc400] rounded-2xl p-4 mb-3 bg-[#ffc40012] text-[#ffc400] text-sm font-bold cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              Gerar Documento
+            </button>
+
+            {saveStatus && (
+              <p
+                className={`text-center text-xs mb-2 shrink-0 ${
+                  saveStatus.startsWith("Erro") ||
+                  saveStatus.startsWith("Não")
+                    ? "text-red-400"
+                    : "text-[#aaa]"
+                }`}
+              >
+                {saveStatus}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={saveFlashcards}
+              disabled={generating}
+              className="w-full border-0 rounded-2xl p-4 mb-3 bg-linear-to-br from-[#FFD700] to-[#FFB300] text-black text-sm font-bold cursor-pointer disabled:opacity-50 shrink-0"
+            >
               Armazenar flashcards
             </button>
 
+            <button
+              type="button"
+              onClick={() => navigate("/flashcards-salvos")}
+              className="w-full border border-[#232632] rounded-2xl p-4 bg-[#10131c] text-[#FFD700] text-sm font-bold cursor-pointer shrink-0 mb-5"
+            >
+              Ver flashcards salvos
+            </button>
           </div>
-
         </div>
-
       </div>
 
+      <style>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }
 
 function MenuItem({ image, text }) {
   return (
-    <div className=" px-4 py-2.5 text-[#f0f0f0] text-sm cursor-pointer flex items-center gap-3 transition-all duration-200 hover:bg-[rgba(255,215,0,0.2)]hover:text-[#FFD700] " >
-      <img src={image} alt="" className="w-5 h-5 brightness-0 invert"/>
-
-      <span>
-        {text}
-      </span>
+    <div className="px-4 py-2.5 text-[#f0f0f0] text-sm cursor-pointer flex items-center gap-3 transition-all duration-200 hover:bg-[rgba(255,215,0,0.2)] hover:text-[#FFD700]">
+      <img
+        src={image}
+        alt=""
+        className="w-5 h-5 brightness-0 invert"
+      />
+      <span>{text}</span>
     </div>
   );
 }

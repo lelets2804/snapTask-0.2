@@ -30,8 +30,8 @@ import comidaIcon from "../assets/comida.png";
 const menuItems = [
   {label: "Câmera", icon: cameraIcon, path: "/",},
   {label: "SnapTask", icon: brilhoIcon, path: "/snaptask",},
-  {label: "Editor Doc", icon: editorDocIcon, path: "/editordoc",},
-  {label: "Leitor Códigos",icon: scanerIcon, path: "/leitordecod",},
+  {label: "Editor Doc", icon: editorDocIcon, path: "/editor-doc",},
+  {label: "Leitor Códigos",icon: scanerIcon, path: "/leitor-codigos",},
   {label: "QR Share", icon: qrCodeIcon, path: "/qr", },
   {label: "Galeria", icon: galeriaIcon, path: "/galeria",},
   {label: "Flashcards", icon: brainIcon, path: "/flashcards",},
@@ -103,7 +103,7 @@ export default function Camera() {
       setFlashActive(false);
     }, 200);
 
-    window.alert("Foto capturada com sucesso! 📸");
+    window.alert("Foto capturada com sucesso!");
   };
 
   const handleFlash = () => {
@@ -260,13 +260,7 @@ export default function Camera() {
           </div>
 
           <div
-            className={[
-              "border-t border-[#FFD700]/20",
-              "bg-black/95",
-              "px-4 pb-6 pt-3",
-              "backdrop-blur-xl",
-            ].join(" ")}
-          >
+            className={[ "border-t border-[#FFD700]/20", "bg-black/95", "px-4 pb-6 pt-3", "backdrop-blur-xl",].join(" ")} >
 
             <div className="mb-5 flex flex-wrap items-center justify-center gap-3">
 
@@ -274,9 +268,7 @@ export default function Camera() {
                 const isActive = mode === cameraMode.value;
 
                 return (
-                  <button key={cameraMode.value} type="button" onClick={() =>  handleMode(  cameraMode.value, cameraMode.label )
-                    }
-                    className={["border-0 bg-transparent", "px-0 py-1", "text-xs font-medium", "transition-all duration-200", isActive ? "border-b-2 border-[#FFD700] text-[#FFD700]" : "text-[#8e8e9e] hover:text-[#FFD700]",  ].join(" ")} >
+                  <button key={cameraMode.value} type="button" onClick={() =>  handleMode(  cameraMode.value, cameraMode.label )} className={["border-0 bg-transparent", "px-0 py-1", "text-xs font-medium", "transition-all duration-200", isActive ? "border-b-2 border-[#FFD700] text-[#FFD700]" : "text-[#8e8e9e] hover:text-[#FFD700]",  ].join(" ")} >
                     {cameraMode.label}
                   </button>
                 );

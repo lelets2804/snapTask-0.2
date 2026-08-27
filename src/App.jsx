@@ -7,6 +7,7 @@ import Libras from "./pages/Libras";
 import LeitorCodigos from "./pages/LeitorCodigos";
 import Galeria from "./pages/Galeria";
 import Flashcards from "./pages/Flashcards";
+import FlashcardsSalvos from "./pages/FlashcardsSalvos";
 import EditorDoc from "./pages/EditorDoc";
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
         <Route path="/leitor-codigos" element={<LeitorCodigos />} />
         <Route path="/galeria" element={<Galeria />} />
         <Route path="/flashcards" element={<Flashcards />}/>
+        <Route path="/flashcards-salvos" element={<FlashcardsSalvos />} />
         <Route path="/editor-doc" element={<EditorDoc />}/>
       </Routes>
     </BrowserRouter>
