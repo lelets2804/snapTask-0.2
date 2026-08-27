@@ -273,7 +273,7 @@ function Galeria() {
                       <div className="photo photo5" onClick={handlePhotoClick}></div>
                       <div className="photo photo6" onClick={handlePhotoClick}></div>
                     </div>
-                    <button className="end-btn" onClick={endRoom}>Encerrar Sala</button>
+                    <button className="end-btn" onClick={endRoom}>Sair</button>
                   </div>
                 )}
               </div>
